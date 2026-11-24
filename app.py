@@ -6,6 +6,7 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from board_review import read_review
 from patient import PROFILES, respond
 
 ROOT = Path(__file__).resolve().parent
@@ -41,6 +42,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, (ROOT / "index.html").read_bytes(), "text/html")
         elif self.path == "/healthz":
             self.send(200, {"service": "xiaosheng-training"})
+        elif self.path.startswith("/api/board-review/"):
+            receipt = self.path.removeprefix("/api/board-review/")
+            code, review = read_review(os.environ.get("BOARD_RECEIPT_DB"), receipt)
+            self.send(code, review)
         else:
             self.send(404, {"error": "unknown route"})
 

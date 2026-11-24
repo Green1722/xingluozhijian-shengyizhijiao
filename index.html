@@ -33,6 +33,23 @@ input{width:min(25rem,90%)} li{overflow-wrap:anywhere}
 <button id="export">下载完整复盘</button>
 </section>
 </main>
+<main aria-labelledby="board-title" style="margin-top:1rem">
+<h2 id="board-title">实机训练复盘</h2>
+<form id="board-lookup">
+<label>华为云回执编号 <input id="receipt" required maxlength="64" pattern="[0-9a-f]{64}" spellcheck="false"></label>
+<button>查询回执</button>
+</form>
+<p id="board-status" role="status"></p>
+<section id="board-result" hidden>
+<p id="board-meta"></p>
+<h3>实机对话记录</h3>
+<ol id="board-events"></ol>
+<h3>沟通候选证据</h3>
+<p>按学员原话初筛，供教师核对。没有命中时，请查看原记录。</p>
+<ul id="board-items"></ul>
+<button id="board-export">下载实机复盘</button>
+</section>
+</main>
 <script>
 const get = id => document.getElementById(id);
 let session, pending, lastReview;
@@ -120,13 +137,55 @@ get('finish').onclick = action(async () => {
   get('status').textContent = '训练已结束。候选项目供教师复核。';
   session = null;
 });
-get('export').onclick = () => {
+get('export').onclick = () => downloadReview(lastReview, '小圣老师-训练复盘.json');
+function downloadReview(report, filename) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([JSON.stringify(lastReview, null, 2)], {type:'application/json'}));
-  link.download = '小圣老师-训练复盘.json';
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type:'application/json'}));
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+let boardReview;
+get('board-lookup').onsubmit = async event => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button');
+  button.disabled = true;
+  get('board-result').hidden = true;
+  get('board-status').textContent = '正在查询回执';
+  try {
+    const receipt = get('receipt').value.trim();
+    const response = await fetch('/api/board-review/' + encodeURIComponent(receipt));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    boardReview = data;
+    const received = new Date(data.received_at).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai'});
+    get('board-meta').textContent = data.case + '｜实体板串口摘录｜北京时间 ' + received;
+    get('board-events').replaceChildren();
+    data.events.forEach((entry, i) => {
+      append('board-events', entry.time + '　' +
+          (entry.direction === 'recognized' ? '学员：' : '设备：') + entry.text);
+      get('board-events').lastElementChild.id = 'board-event-' + (i + 1);
+    });
+    get('board-items').replaceChildren();
+    for (const item of data.items) {
+      append('board-items', item.label + '：' + (item.events.length ? '' : '待教师核对'));
+      const row = get('board-items').lastElementChild;
+      for (const number of item.events) {
+        const link = document.createElement('a');
+        link.href = '#board-event-' + number;
+        link.textContent = '第 ' + number + ' 条';
+        row.append(' ', link);
+      }
+    }
+    get('board-result').hidden = false;
+    get('board-status').textContent = '已查到 ' + data.events.length + ' 条实机记录';
+  } catch (error) {
+    get('board-status').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 };
+get('board-export').onclick = () => downloadReview(boardReview, '小圣老师-实机复盘.json');
 get('mic').onclick = () => {
   if (!session || pending) { get('status').textContent = '请先开始训练，并等待上一句回复'; return; }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
