@@ -1,0 +1,8 @@
+{
+  "source": "usb_serial_capture",
+  "case": "虚构验收样例",
+  "events": [
+    {"time":"2026-01-01T09:00:00+08:00","direction":"recognized","text":"您好，请问您叫什么名字？"},
+    {"time":"2026-01-01T09:00:01+08:00","direction":"device_reply","text":"您好，我是模拟患者。"}
+  ]
+}

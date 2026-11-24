@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小圣老师 · 模拟训练</title>
+<style>
+body{margin:3rem auto;padding:0 1rem;max-width:44rem;font:1rem/1.65 system-ui;color:#142b2b;background:#f3f8f6}
+main{background:white;border:1px solid #cbded8;padding:1.5rem;border-radius:1rem}
+button,select,input{font:inherit;padding:.4rem .6rem;margin:.25rem}
+input{width:min(25rem,90%)} li{overflow-wrap:anywhere}
+.review-turn{padding:.8rem .3rem;border-bottom:1px solid #cbded8}
+.review-turn p{margin:.35rem 0}
+.review-turn textarea{display:block;width:min(100%,30rem);font:inherit;margin:.4rem 0}
+#evidence{padding-inline-start:1.6rem}
+
+</style>
+<h1>小圣老师</h1>
+<main>
+<label>训练场景 <select id="case"><option value="oxygen">鼻导管吸氧</option><option value="feeding">鼻饲</option></select></label>
+<button id="start">开始训练</button>
+<form id="turn">
+<label>护士说 <input id="line" maxlength="300" required></label>
+<button>发送</button>
+<button type="button" id="mic">语音输入</button>
+</form>
+<button id="finish">结束并查看沟通证据</button>
+<p id="status" role="status"></p>
+<ol id="history"></ol>
+<section id="review" hidden>
+<h2>教师复盘</h2>
+<p>逐条核对护士原话、患者回复和候选沟通项目。教师标注随复盘下载。</p>
+<ol id="evidence"></ol>
+<button id="export">下载完整复盘</button>
+</section>
+</main>
+<script>
+const get = id => document.getElementById(id);
+let session, pending, lastReview;
+async function api(route, payload) {
+  const response = await fetch(route, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  return data;
+}
+function append(id, text) {
+  const item = document.createElement('li');
+  item.textContent = text;
+  get(id).append(item);
+}
+function action(run) {
+  return async event => {
+    event.preventDefault();
+    if (pending) return;
+    pending = true;
+    get('status').textContent = '';
+    try { await run(); }
+    catch(error) { get('status').textContent = error.message; }
+    finally { pending = false; }
+  };
+}
+get('start').onclick = action(async () => {
+  session = (await api('/api/sessions',{scenario:get('case').value})).id;
+  get('history').replaceChildren();
+  get('evidence').replaceChildren();
+  get('review').hidden = true;
+  lastReview = null;
+  get('status').textContent = '训练已开始';
+});
+get('turn').onsubmit = action(async () => {
+  if (!session) throw new Error('请先开始训练');
+  const utterance = get('line').value.trim();
+  if (!utterance) return;
+  const {reply} = await api('/api/turns',{session_id:session,event_id:crypto.randomUUID(),utterance});
+  append('history', '护士：' + utterance + '　患者：' + reply);
+  get('line').value = '';
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const audio = new SpeechSynthesisUtterance(reply);
+    audio.lang = 'zh-CN';
+    window.speechSynthesis.speak(audio);
+  }
+});
+get('finish').onclick = action(async () => {
+  if (!session) throw new Error('请先开始训练');
+  lastReview = await api('/api/finish',{session_id:session});
+  get('review').hidden = false;
+  const labels = {identity:'身份询问',allergy:'过敏史',baseline:'不适询问',procedure:'操作沟通',follow_up:'感受询问',education:'注意事项'};
+  get('evidence').replaceChildren();
+  lastReview.annotations = lastReview.turns.map((item, index) => {
+    const note = {turn:index + 1, finding:'pending', category:item.marker || '', comment:''};
+    const row = document.createElement('li');
+    row.className = 'review-turn';
+    for (const line of ['护士：' + item.utterance, '患者：' + item.reply, '候选项目：' + (labels[item.marker] || '无')]) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = line;
+      row.append(paragraph);
+    }
+    function select(label, options, property) {
+      const wrapper = document.createElement('label');
+      wrapper.textContent = label;
+      const control = document.createElement('select');
+      for (const [key, value] of options) control.add(new Option(value, key));
+      control.value = note[property];
+      control.onchange = () => { note[property] = control.value; };
+      wrapper.append(control);
+      row.append(wrapper);
+    }
+    select('教师判定', [['pending','待复核'],['confirmed','证据充分'],['insufficient','证据不足或误标'],['missed','系统漏标']], 'finding');
+    select('沟通项目', [['','未归类'], ...Object.entries(labels)], 'category');
+    const comment = document.createElement('textarea');
+    comment.rows = 2;
+    comment.maxLength = 500;
+    comment.placeholder = '教师备注';
+    comment.setAttribute('aria-label', '第 ' + (index + 1) + ' 条教师备注');
+    comment.oninput = () => { note.comment = comment.value; };
+    row.append(comment);
+    get('evidence').append(row);
+    return note;
+  });
+  get('status').textContent = '训练已结束。候选项目供教师复核。';
+  session = null;
+});
+get('export').onclick = () => {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(lastReview, null, 2)], {type:'application/json'}));
+  link.download = '小圣老师-训练复盘.json';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+};
+get('mic').onclick = () => {
+  if (!session || pending) { get('status').textContent = '请先开始训练，并等待上一句回复'; return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { get('status').textContent = '浏览器未提供语音识别，请输入文字'; return; }
+  const recognition = new Recognition();
+  recognition.lang = 'zh-CN';
+  recognition.onresult = event => {
+    get('line').value = event.results[0][0].transcript;
+    get('turn').requestSubmit();
+  };
+  recognition.onerror = () => { get('status').textContent = '未取得语音文本，请重试或输入文字'; };
+  recognition.start();
+};
+</script>
+</html>

@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "classroom-control": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["classroom_control.py"]
-    }
-  }
-}

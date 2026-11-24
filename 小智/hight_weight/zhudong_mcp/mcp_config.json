@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "health-exam-service": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["physical_exam_control.py"]
-    }
-  }
-}
