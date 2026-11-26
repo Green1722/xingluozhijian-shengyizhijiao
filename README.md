@@ -18,6 +18,8 @@ python app.py
 - `python verify_http.py` 用临时数据库验证 HTTP 交互、重试、隔离及复盘持久化。
 - `python verify_paraphrases.py regression.csv` 回放 18 条样稿外修订用例。加 `--holdout` 运行 8 条留出用例，当前有 3 条已知失败。
 - [板端记录接收与实测结果](docs/board-cloud.md) 包含华为开发者空间部署和接收验证步骤。
+- [本地 Windows 部署](docs/local-deploy.md) 包含虚拟环境、SQLite 数据库初始化和 `deploy/` 下的启动、停止与验收脚本。
+- [板端训练场景切换](docs/board-scenarios.md) 记录小儿静脉输液、鼻饲、鼻导管吸氧三个场景的实测切换口令。
 
 截至 2026-11-24，华为开发者空间已验证网页登录态训练、教师标注和导出，也已接收一轮实体板训练的 5 条经过筛选的串口事件。未登录请求访问接收回执返回 401。公开示例使用新编的虚构文本，实际回执和原始串口日志留在队内。
 

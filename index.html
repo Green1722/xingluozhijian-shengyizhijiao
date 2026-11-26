@@ -52,6 +52,19 @@ input{width:min(25rem,90%)} li{overflow-wrap:anywhere}
 </main>
 <script>
 const get = id => document.getElementById(id);
+const OFFLINE = location.protocol === 'file:';
+const SERVER = 'http://127.0.0.1:8080/';
+if (OFFLINE) {
+  const status = get('status');
+  status.textContent = '当前是直接打开的本地文件，训练接口不可用。请改用服务地址打开：';
+  const link = document.createElement('a');
+  link.href = SERVER;
+  link.textContent = SERVER;
+  status.append(link);
+  fetch(SERVER + 'healthz', {mode:'no-cors'})
+    .then(() => location.replace(SERVER))
+    .catch(() => {});
+}
 let session, pending, lastReview;
 async function api(route, payload) {
   const response = await fetch(route, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -71,7 +84,11 @@ function action(run) {
     pending = true;
     get('status').textContent = '';
     try { await run(); }
-    catch(error) { get('status').textContent = error.message; }
+    catch(error) {
+      get('status').textContent = OFFLINE
+        ? '接口不可用：请改用 ' + SERVER + ' 打开页面，直接双击 index.html 无法调用训练接口。'
+        : error.message;
+    }
     finally { pending = false; }
   };
 }
